@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {"count": 3, "length": 2, "line": 1, "col": 0},
+    {"count": 3, "length": 6, "line": 1, "col": 3},
+    {"count": 3, "length": 4, "line": 1, "col": 11},
+    {"count": 3, "length": 2, "line": 1, "col": 18},
+    {"count": 2, "length": 4, "line": 1, "col": 22},
+    {"count": 3, "length": 8, "line": 1, "col": 29},
+    {"count": 3, "length": 3, "line": 2, "col": 4},
+    {"count": 1, "length": 6, "line": 2, "col": 8},
+    {"count": 1, "length": 3, "line": 2, "col": 18},
+    {"count": 1, "length": 5, "line": 2, "col": 27},
+    {"count": 3, "length": 6, "line": 2, "col": 38},
+    {"count": 2, "length": 4, "line": 2, "col": 50}
+  ],
+  "links": [],
+  "line_min": 1,
+  "line_max": 57,
+  "window_width": 185
+}

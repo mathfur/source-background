@@ -4,7 +4,7 @@
 
 import Prelude
 import Data.Monoid (mappend)
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import Control.Exception (fromException)
 import Control.Monad (forever)
 import Control.Concurrent (MVar,  newMVar, modifyMVar_, readMVar)
@@ -24,9 +24,10 @@ application state rq = do
     ver  <- WS.getVersion          -- バージョン取得
     sink <- WS.getSink
     val <- liftIO $ readMVar state -- 状態取得
+    json <- liftIO $ readFile "sample.json"
     liftIO $ modifyMVar_ state $ \old_text -> do
-                            WS.sendSink sink $ WS.textData ("OK" :: Text)
-                            return "NEW STATE"
+                            WS.sendSink sink $ WS.textData $ pack json
+                            return ""
     talk sink state
 
 talk :: WS.Protocol p => WS.Sink WS.Hybi00 -> MVar ServerState -> WS.WebSockets p ()
