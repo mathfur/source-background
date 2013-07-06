@@ -1,0 +1,10 @@
+dist*
+*.hi
+*.chi
+*.chs.h
+*.o
+*.sqlite3
+.hsenv*
+cabal-dev
+.virthualenv
+tags
