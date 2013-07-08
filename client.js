@@ -1,20 +1,17 @@
-var margin = {top: 40, right: 10, bottom: 10, left: 10},
-    width = 1500 - margin.left - margin.right,
-    height = 900 - margin.top - margin.bottom;
+var margin = {top: 0, right: 0, bottom: 0, left: 0},
+    width = (window.innerWidth || documentElement.clientWidth || getElementsByTagName('body')[0].clientWidth) - margin.left - margin.right,
+    height = (window.innerHeight || documentElement.clientHeight || getElementsByTagName('body')[0].clientHeight) - margin.top - margin.bottom;
 
 var x = d3.scale.ordinal()
-          .rangeRoundBands([0, width], .1);
+          .rangeRoundBands([0, width]);
 
 var y = d3.scale.ordinal()
-          .rangeRoundBands([0, height], .1);
-
-var color = d3.scale.category20c();
+          .rangeRoundBands([0, height]);
 
 var svg = d3.select("body")
             .append("svg")
             .attr("width", width + margin.left + margin.right)
             .attr("height", height + margin.top + margin.bottom)
-            .append("g")
             .attr("transform", "translate(" + margin.left + ", " + margin.top + ")");
 
 var Socket = "MozWebSocket" in window ? MozWebSocket : WebSocket;
@@ -24,17 +21,23 @@ ws.onmessage = function(event){
   var json = eval("(" + event.data + ")");
   var nodes = json.nodes;
   var links = json.links;
+  var top_line = json.editor_state.top_line;
+  var bottom_line = json.editor_state.bottom_line;
+  var win_width = json.editor_state.win_width;
 
-  x.domain(d3.range(json.window_width));
-  y.domain(d3.range(json.line_min, json.line_max+1));
+  x.domain(d3.range(win_width));
+  y.domain(d3.range(top_line, bottom_line));
 
+  svg.selectAll(".label").remove();
   svg.selectAll(".label")
      .data(nodes)
      .enter()
      .append("rect")
+     .filter(function(d){ return top_line <= d.line && d.line <= bottom_line })
      .attr("class", "label")
      .attr("x", function(d){ return x(d.col) })
      .attr("y", function(d){ return y(d.line) })
+     .attr("title", function(d){ return d.word + " (" + d.col + ", " + d.line + ")" })
      .attr("width", function(d){ return x(d.col + d.length) - x(d.col) })
      .attr("height", function(d){ return y.rangeBand() })
      .style("fill", function(d){
@@ -45,11 +48,8 @@ ws.onmessage = function(event){
        }else if(d.count == 3){
          return "#00F";
        }else{
-         return "#FFF";
+         return "#aaa";
        }
-     });
+     })
+     .attr("stroke-width", 0);
 };
-
-d3.select('#send').on('click', function(){
-    ws.send("MSG1");
-});
