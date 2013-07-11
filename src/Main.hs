@@ -9,7 +9,6 @@ import Data.Char
 import Data.Maybe
 import qualified Data.List as L
 import Data.Aeson
-import Control.Concurrent (MVar,  newMVar, modifyMVar_)
 import Control.Monad.IO.Class (liftIO)
 import qualified Network.WebSockets as WS
 import qualified Data.ByteString.Lazy.Char8 as LC (unpack)
@@ -19,114 +18,60 @@ import Control.Monad (forever)
 import Network
 import System.IO
 
-type ServerState = Text
+import Types
 
 main :: IO ()
 main = withSocketsDo $ do
-    hSetBuffering stdout NoBuffering
-    server `catch` ex_catch
+    -- hSetBuffering stdout NoBuffering
+    (flip catch) ex_catch $ do
+      sock <- listenOn (PortNumber 8001)
+      WS.runServer "0.0.0.0" 9160 $ application sock
+      sClose sock
     putStrLn "Connection closed."
       where
-         ex_catch :: SomeException -> IO ()
-         ex_catch e = putStrLn $ "Exception caught." ++ show e
+        ex_catch :: SomeException -> IO ()
+        ex_catch e = putStrLn $ "Exception caught." ++ show e
+        application :: Socket -> WS.Request -> WS.WebSockets WS.Hybi00 ()
+        application sock rq = do
+            WS.acceptRequest rq
+            sink <- WS.getSink
+            flip WS.catchWsError (catchDisconnect sink) $
+              forever $ do
+                liftIO $ do
+                  h <- getHandle sock
+                  cnt <- (pack <$> hGetLine h)
+                  output <- mainHandler cnt
+                  responseWebsocket sink output
+                  responseHttp h
+              where
+                catchDisconnect sink e = case fromException e of
+                    Just WS.ConnectionClosed -> liftIO $ WS.sendSink sink $ WS.textData ("disconnected" :: Text)
+                    _ -> return ()
+                getHandle :: Socket -> IO Handle
+                getHandle sock' = do
+                    (h,_,_) <- accept sock'
+                    hSetBuffering h LineBuffering
+                    return h
+                responseHttp :: Handle -> IO ()
+                responseHttp h = mapM_ (hPutStrLn h) ["HTTP/1.0 200 OK", "Content-type: text/html", "Content-Length: 0", ""]
+                responseWebsocket :: WS.Sink WS.Hybi00 -> Text -> IO ()
+                responseWebsocket sink output' = WS.sendSink sink $ WS.textData output'
 
-server :: IO ()
-server = do
-    sock <- listenOn (PortNumber 8001)
-    state <- newMVar ("" :: Text)
-    WS.runServer "0.0.0.0" 9160 $ application sock state
-    sClose sock
+------------------------------------------------
 
-application :: Socket -> MVar ServerState -> WS.Request -> WS.WebSockets WS.Hybi00 ()
-application sock state rq = do
-    WS.acceptRequest rq
-    sink <- WS.getSink
-    talk sock sink state
-
-talk :: WS.Protocol p => Socket -> WS.Sink WS.Hybi00 -> MVar ServerState -> WS.WebSockets p ()
-talk sock sink state = flip WS.catchWsError catchDisconnect $
-  forever $ do
-    liftIO $ repeats (receive sock sink)
-  where
-    catchDisconnect e = case fromException e of
-        Just WS.ConnectionClosed -> liftIO $ modifyMVar_ state $ \old_text -> do
-            WS.sendSink sink $ WS.textData ("disconnected" :: Text)
-            return old_text
-        _ -> return ()
-
-repeats :: Monad m => m Bool -> m () 
-repeats x = x >>= (\x' -> if x' then (return ()) else repeats x)
-
-receive :: Socket -> WS.Sink WS.Hybi00 -> IO Bool
-receive sock sink = do
-    (h,_,_) <- accept sock
-    hSetBuffering h LineBuffering
-    editor_state <- (parseEditorState . pack) <$> hGetLine h
-    print editor_state
-    let filename = editingFile editor_state
-    cnt <- liftIO $ (readFile filename)>>=(return . pack)
-    do
-      let nodes = getNodes cnt
-      let nodes' = map (updateGrepCount cnt) nodes
-      let w = Whole nodes' [] editor_state
-      print w
-      WS.sendSink sink $ WS.textData $ convertToJSON w
-    do
-      hPutStrLn h "HTTP/1.0 200 OK"
-      hPutStrLn h "Content-type: text/html"
-      hPutStrLn h $ "Content-Length: 0"
-      hPutStrLn h ""
-    return True
-
-data IndexedWord  = IndexedWord Int Text deriving (Show, Eq)
-data Node = Node Text Int Int Int deriving (Show, Eq)
-data Link = Link Int Int deriving (Show, Eq)
-data Whole = Whole [Node] [Link] EditorState deriving (Show, Eq)
-data EditorState = EditorState Int Int Int Int Int FilePath deriving (Show, Eq)
-
-editingFile :: EditorState -> FilePath
-editingFile (EditorState _ _ _ _ _ path) = path
-
-instance ToJSON Whole where
-    toJSON (Whole ns ls editor_state) = object [
-        "nodes" .= toJSON ns,
-        "links" .= toJSON ls,
-        "editor_state" .= toJSON editor_state
-        ]
-
-instance ToJSON EditorState where
-    toJSON (EditorState top_line bottom_line win_width col line fname) = object [
-        "top_line" .= top_line,
-        "bottom_line" .= bottom_line,
-        "win_width" .= win_width,
-        "col" .= col,
-        "line" .= line,
-        "fname" .= fname
-        ]
-
-instance ToJSON Node where
-    toJSON (Node w c l grep_count) = object [
-                                            "word" .= w,
-                                            "col" .= c,
-                                            "line" .= l,
-                                            "length" .= length w,
-                                            "count" .= grep_count
-                                            ]
-
-instance ToJSON Link where
-    toJSON (Link s t) = object ["source" .= toJSON s, "target" .= toJSON t]
-
-loc :: IndexedWord -> Int
-loc (IndexedWord i s) = length s + i
-
-increment :: Int -> IndexedWord -> IndexedWord
-increment j (IndexedWord i s) = IndexedWord (i + j) s
+mainHandler :: Text -> IO Text
+mainHandler cnt' = do
+    let editor_state = parseEditorState cnt'
+    let fname = editingFile editor_state
+    cnt <- pack <$> (liftIO $ readFile fname)
+    let nodes' = getNodes cnt
+    return $ convertToJSON $ Whole nodes' [] editor_state
 
 convertToJSON :: Whole -> Text
 convertToJSON whole = pack $ LC.unpack $ encode $ toJSON whole
 
 getNodes :: Text -> [Node]
-getNodes input = L.concat $ map (\(l, line) -> map (getNode l) $ getWords 1 line) $ zip [1..] $ lines input
+getNodes cnt = map (updateGrepCount cnt) $ L.concat $ map (\(l, line) -> map (getNode l) $ getWords 1 line) $ zip [1..] $ lines cnt
 
 getNode :: Int -> IndexedWord -> Node
 getNode i (IndexedWord j s) = Node s j i 0
