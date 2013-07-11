@@ -144,11 +144,11 @@ getWords cur input = map (increment cur) $ fromMaybe [] $ (:) <$> word <*> (getW
     remainder = (snd <$> getWord input)
 
 getWord :: Text -> Maybe (IndexedWord, Text)
-getWord input = if (input' == "") then Nothing else Just (IndexedWord (length r1) (pack r2'), r3)
+getWord input = if (input' == "" || r2' == "") then Nothing else Just (IndexedWord (length r1) (pack r2'), r3)
   where
     (r1, input') = break isAlphaNum input
     (r2, r3) = span isAlphaNum input'
-    r2' = ((unpack r2) =~ ("[a-zA-Z0-9_-]+" :: String) :: String)
+    r2' = ((unpack r2) =~ ("[a-zA-Z0-9_-]*" :: String) :: String)
 
 parseEditorState :: Text -> EditorState
 parseEditorState input = EditorState (to_i $ ns !! 0) (to_i $ ns !! 1) (to_i $ ns !! 2) (to_i $ ns !! 3) (to_i $ ns !! 4) (unpack $ ns !! 5)
