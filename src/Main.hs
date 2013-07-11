@@ -28,7 +28,7 @@ main = withSocketsDo $ do
     putStrLn "Connection closed."
       where
          ex_catch :: SomeException -> IO ()
-         ex_catch = (const $ putStrLn "Exception caught.")
+         ex_catch e = putStrLn $ "Exception caught." ++ show e
 
 server :: IO ()
 server = do
